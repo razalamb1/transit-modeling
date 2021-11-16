@@ -1,0 +1,43 @@
+  ---
+title: "Final Project Proposal: What Makes them Ride?"
+author: "Raza Lamb"
+date: "10/27/2021"
+output: pdf_document
+geometry: margin=2cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+With the recent debates on infrastructure spending in the United States, public transportation has been a critically important part of this discussion. In addition to being an important economic driver in most American cities, public transportation allows access to jobs, health care, and leisure activities, especially for the most vulnerable. Even before the pandemic, [public transportation ridership in the U.S. was decreasing]
+(https://www.everycrsreport.com/reports/IN11181.html). Especially given the pandemic, understanding the main drivers of ridership in the U.S. could be critical to urban planners and public policy makers as they make pricing, tax, headway, and future building plans.
+
+In this analysis, I will utilize hierarchical linear regression to model the average monthly ridership of public transportation systems (specially rail ridership) in 7 major cities: Boston, Chicago, Los Angeles, New York, Portland, San Francisco, and Washington, D.C. between 2001 and 2019 (available dates vary by city).
+
+## Research Questions
+
+The main inferential questions for this analysis are as follows:
+
+- How much does public transportation ridership differ by city, after accounting for other factors, such as number of stations, headway, population density, etc.
+- Did the introduction of ride-sharing services (i.e. Uber, Lyft) decrease public transportation ridership, after accounting for other factors?
+- Generally, what factors influence public transportation ridership: weather, day of the week, season, etc.? Does the influence of these factors vary by city?
+
+## Data
+
+The data for this project will ultimately come from multiple sources and need to be compiled. For the actual ridership data, the data for each city will come from a separate website, sometimes it will need to be scraped/copied from a report, rather than an API. Some data is in daily format, and some data is in monthly format, so they will need to be standardized. However, ridership data is available compiled in one dataset provided by the National Transit Database, but this data does not differentiate ridership by weekday/weekend, so there would be information loss. Additionally, historical data on number of stations, headway (train frequency), and other public transportation system-specific statistics are available separately from each city. Population and density data is available from the Census, in yearly format. Historical weather data is available from the National Centers for Environmental Information, and is downloadable by city, with each observation being a day. This data will need to be converted to monthly before analysis. Finally, data on when Uber/Lyft were introduced in each city is available from local news reports.
+
+The biggest concern for this analysis is all of the separate sources of data and combining them. Thus, while the initial goal is to include all of the above, I may need to reduce the total amount of data.
+
+## Project Plan
+
+The outline for dates is as follows:
+
+- Compile/clean data by 11/13
+- Conduct full EDA by 11/17
+- Finalize model by 11/22
+
+
+
