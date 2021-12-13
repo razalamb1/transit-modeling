@@ -1,0 +1,448 @@
+---
+title: "What Makes Them Ride?"
+subtitle: "An Analysis of Public Transit Ridership in 9 American Cities"
+author: "Raza Lamb"
+date: "11/29/2021"
+geometry: margin=1.5cm
+documentclass: report
+output: pdf_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(rms)
+library(stats)
+library(lme4)
+library(sjPlot)
+library(car)
+library(ggthemes)
+require(scales)
+library(xtable)
+library(gtsummary)
+library(tidyverse)
+library(DataCombine)
+library(forcats)
+```
+
+## Summary
+
+This analysis investigates the various factors that influenced public transportation ridership in 9 major U.S. cities between 2002 and 2019. The goal of the project is to attempt to explain the recent decrease in public transportation ridership seen in many cities. The results of the analysis suggest that seasonal public transportation ridership trends vary greatly by city and that an increasing trend in ridership is largely reversed following the introduction of Uber, even after controlling for other factors.
+
+## Introduction
+
+Public transportation is one of the most important aspects of modern infrastructure. In addition to being a critical driver of economic growth and productivity, it dramatically increases quality of life within major cities by providing access to food, education and entertainment, especially for those with lower socioeconomic status. Investment in public transportation is thus a key public policy issue, especially in the context of the Infrastructure Investment and Jobs Act (P.L. 117-58), which allocates nearly $20 Billion USD in new government spending on transportation.
+
+In fact, public transportation ridership in the U.S. had been decreasing even prior to the COVID-19 pandemic. A 2018 [study](https://www.vox.com/the-goods/2018/9/26/17903146/mass-transit-public-transit-rail-subway-bus-car) found that New York City was the only major American city to experience an increase in ridership. There are many potential reasons cited for this trend, including urban sprawl, population decreases, and the introduction of ride-sharing services such as Uber. Regardless, urban planners and other policy makers need to understand how various factors affect transit ridership in order to make appropriate funding and investment decisions. This analysis examines public transportation ridership by month in 9 major American cities in order to determine what factors influence rail ridership. Specifically, the questions of interest are: is there a trend over time after accounting for other factors, does the introduction of Uber in a city affect the ridership trend, and what potentially controllable factors influence ridership the most?
+
+## Data
+
+### Data Preparation
+
+The data required for this analysis was derived from several different sources. The information on public transit systems comes from the National Transit Dataset (NTD), which is a public dataset tracking transportation statistics for all transit agencies in the United States. This is the ideal dataset for this analysis, because all of the statistics are standardized across systems. From this dataset, rail ridership totals (tram, light rail, and heavy rail — commuter rail was not included) per month were extracted for 9 cities: Atlanta, Boston, Chicago, Los Angeles, New York City, Philadelphia, Portland, San Francisco, and Washington, D.C. Also obtained from the NTD were yearly statistics by transit agency including: average fare revenue by mode of service, number of vehicles in operation at maximum service, and directional route miles (length of track). Other city-specific statistics were obtained through various sources. Yearly population and population density estimates were extracted from the United States Census, while labor data (unemployment and labor force participation) was obtained from the Bureau of Labor Statistics (BLS). Daily weather data, inlcuing temperature, precipitation, and snowfall, was scraped from the National Oceanic and Atmospheric Administration (NOAA). Overall monthly average gas price (urban) was obtained from the Federal Reserve Economic Data (FRED) website, along with the monthly consumer price index (CPI). Finally, Uber introduction into a city market was measured by a binary indicator variable, determined by sourcing local news articles and Uber's website.
+
+After obtaining the data, significant work was required to appropriately join all data. First of all the response variable, originally total monthly rail ridership, was divided by the number of days in each month to obtain a more interpretable response: average daily ridership. Subsequently, the yearly transit statistics were joined with the response variable using a many-to-one join. The other yearly statistics, population and population density, were also joined in this manner. The monthly data, including gas price, labor data, and the CPI, were joined using a one-to-one join. The weather data was first converted to monthly averages, and then joined in a similar fashion. The Uber indicator variable was added separately for each city using subsetting. Additionally, a seasonal categorical variable was added based on the month. Finally, the monthly gas prices and yearly average fare per trip were inflation adjusted using the CPI (base year 2010). 
+
+### Data Exploration
+
+During this project, exploratory data analysis was made difficult on account of the vast differences between cities. Average daily ridership ranges from approximately 100,000 in Portland to more than 6.5 million in New York City. Notably, New York has ridership far above any other city—New York's average ridership is more than 9 times the next highest city, Washington, D.C. As a result, initial data analysis also explored the log of average ridership. While not normally distributed, this scale is much more reasonable. However, visualization of trends was still very difficult, and typically had to be done by city for meaningful insights. Interestingly, none of the continuous predictors appeared to have a linear relationship with the response (or log response). Instead, all of the trends appeared to be quadratic. One initial hypothesis for this occurrence was the confluence of overlapping trends, such as seasonality, gas prices, population, and other trends unaccounted for by this set of predictors.
+
+Despite challenges with the data, there were still useful insights gathered from initial data exploration. First of all, seasonal trends appeared to vary by city. For example, Washington, D.C. and Chicago visibly had lower ridership in the winter, while Philadelphia experienced the lowest ridership in the summer, and Los Angeles experienced very little differences by season. Labor force participation rate and gas prices had the most consistent strong positive relationship with ridership, across nearly every city. Finally, in examining the trend of ridership over time, the motivation for this project was confirmed. While the trends are different, every city in this analysis experienced a decrease in ridership before the end of 2019. Below are visualized the trends across time for different cities, displayed as LOESS lines. New York is displayed separately for easier visualiztion. This consistent trend is particularly striking, especially given the differences in population trends, expansion of transit services and climate across cities.
+
+
+```{r, echo = FALSE, out.width="50%", fig.cap = "Average Daily Ridership Over Time by City", fig.show='hold', message = FALSE}
+trains <- read.csv("../25_final_data/public_transportation.csv", 
+                   colClasses=c("City"="factor", "Month" = "factor", 
+                                "Uber" = "factor", 
+                                "Season" = "factor"))
+trains$Labor_perc <- trains$Labor.Force/trains$Population * 100
+trains <- na.omit(trains)
+trains$Month.Numeric <- factor(trains$Month.Numeric, ordered = TRUE,
+                               levels = c(1,2,3,4,5,6,7,8,9,10,11,12))
+trains$log_response <- log(trains$Average.Daily.Ridership)
+alt <- trains[trains$City != "New York City",]
+new_york <- trains[trains$City == "New York City",]
+ggplot(alt, aes(x = Year, y = Average.Daily.Ridership, color = City)) + 
+  geom_smooth() + scale_y_continuous(labels = comma) + theme_bw() + 
+  labs(x = "Year", y = "Average Daily Ridership", 
+       title = "Average Daily Ridership over Time") + theme(plot.title = 
+                                                              element_text(hjust 
+                                                                           = 0.5))
+ggplot(new_york, aes(x = Year, y = Average.Daily.Ridership)) + 
+  geom_smooth() + scale_y_continuous(labels = comma) + theme_bw() + 
+  labs(x = "Year", y = "Average Daily Ridership", 
+       title = "Average Daily Ridership over Time in NYC") + theme(plot.title = 
+                                                              element_text(hjust 
+                                                                           = 0.5))
+```
+
+## Model
+
+During the planning stage of the analysis, the goal was to fit a hierarchical model with cities as random intercepts, especially given the normal distribution of the response variable within cities. Unfortunately, during modeling, a hierarchical model failed to converge when including the interaction between year and the Uber indicator variable as a random slope. Because that interaction is one of the main outcomes of interest to this analysis, an alternative model was developed. The final model selected was a linear model, with the response as the logarithm of average daily ridership. The general formula for this model is included below. Here, each $x_{pi}$ represents either a continuous predictor, a dummy variable representing a categorical variable, or an interaction between two or more predictors.
+
+- Predictors in the final model: city, year, population, vehicles, route miles, minimum temperature, precipitation, Uber, season, average fare, labor force participation
+- Interactions in the final model: Uber:year:city, Uber:average fare, Uber:gas price, and city:season
+
+$$
+y_{i} = \beta_{0} + \beta_1 x_{1i} + \beta_2 x_{2i} + \beta_3 x_{3i} + ... +\beta_p x_{pi} + \epsilon_{i},\text{ }\epsilon_{i} \sim N(0, \sigma^2),\text{ }i = 1,...,n
+$$
+
+### Model Selection
+
+
+```{r, echo = FALSE, message = FALSE}
+# Center predictor variables
+trains$Population <- (trains$Population/100000) - mean(trains$Population/100000)
+trains$Population.Density <- trains$Population.Density - mean(trains$Population.Density)
+trains$Unemployment.Rate <- trains$Unemployment.Rate - mean(trains$Unemployment.Rate)
+trains$Gas.Price <- trains$Gas.Price - mean(trains$Gas.Price)
+trains$Vehicles <- (trains$Vehicles/10) - mean(trains$Vehicles/10)
+trains$Route.Miles <- trains$Route.Miles/10 - mean(trains$Route.Mile/10)
+trains$Average.Fare <- trains$Average.Fare - mean(trains$Average.Fare)
+trains$Minimum.Temperature <- trains$Minimum.Temperature - mean(trains$Minimum.Temperature)
+trains$Maximum.Temperature <- trains$Maximum.Temperature - mean(trains$Maximum.Temperature)
+trains$Precipitation <- trains$Precipitation - mean(trains$Precipitation)
+trains$Snowfall <- trains$Snowfall - mean(trains$Snowfall)
+trains$Snow.Depth <- trains$Snow.Depth - mean(trains$Snow.Depth)
+trains$Labor_perc <- trains$Labor_perc - mean(trains$Labor_perc)
+trains$Year <- trains$Year - 2010
+model1 <- lm(log_response ~ City*Year*Uber + Population + Population.Density + Unemployment.Rate + Uber*Gas.Price + Vehicles + Route.Miles + Uber*Average.Fare + Minimum.Temperature + Precipitation + Snowfall + Snow.Depth + City*Season + Labor_perc, data = trains)
+null_model <- lm(log_response ~ Uber, data = trains)
+n <- nrow(trains)
+aic <- step(null_model, scope = formula(model1), direction = "both", trace = 0)
+ex <- lm(Average.Daily.Ridership ~ Uber + City + Gas.Price + Year + 
+    Season + Average.Fare + Labor_perc + Route.Miles + Minimum.Temperature + 
+    Population + Vehicles + Uber:City + City:Year + City:Season + 
+    Uber:Year + Uber:Gas.Price + Uber:Average.Fare + Uber:City:Year, 
+    data = trains)
+```
+
+Before fitting any models, variables were centered, and rescaled given their massively different scales. Population was transformed into 100,000s of people, the number of vehicles was converted to 10s of vehicles, and the same transformation was done to miles. Initially, the full model selected included all predictors: city, year (as a continuous predictor), population, population density, labor force participation, unemployment rate, CPI adjusted gas price, max number of vehicles in service, number of directional route miles, CPI adjusted average fare, average minimum temperature, average precipitation, average snowfall, average snow depth, Uber indicator variable, and season. Also included were several interactions based on visualizations from preliminary data exploration. These included a three-way interaction between city, the Uber indicator variable, and year; an interaction between season and city; an interaction between Uber and average fare, and interaction between Uber and gas price. Also based on the findings from EDA, the response variable in this first model was the logarithm of average daily ridership per month.
+
+After fitting this initial model, model selection was performed using step-wise selection with AIC as the selection criteria. This removed several predictors, including population density, unemployment rate, precipitation, snowfall, and snow depth. All of the chosen interactions were included in the model.
+
+### Model Assessment
+
+Subsequently, the model chosen with stepwise selection was assessed to verify that it meets the four assumptions required for linear regression: normality, linearity, independence, and constant variance. As discussed above, the logarithm of average daily ridership was selected as the response for the model, but this assumption was double checked here. Below is included the QQ plots for the same model, both without and with the log transformation of the response variable, on the left and right, respectively. Visibly, the log transformation is needed to met the assumption of normality.
+
+```{r, echo = FALSE, message = FALSE, out.width="50%", fig.cap = "Residual QQ-Plot Without (Left) and With (Right) Log Transformation", fig.show = 'hold'}
+plot(ex, which=2)
+plot(aic, which=2)
+```
+Also visible in the above QQ-plot after log transformation are two large outliers. These outliers are also visible in the plot of residuals vs. fitted values and the plot of residuals vs. leverage, both displayed below. While the model clearly satisfies the independence and equal variance assumption, the magnitude of these outliers are concerning. Investigation of these outliers reveals that they are consecutive months (October and Novrmber) of data from Los Angeles in 2003. News articles from that period, including one from the [LA Times](https://www.latimes.com/archives/la-xpm-2003-nov-18-me-mta18-story.html) reveal that there was a transit worker strike during this period, explaining the low ridership. Due to this, these observations were removed from the data and the model was refit. Stepwise selection was conducted again, and this time precipitation was kept as a predictor. 
+
+```{r, echo = FALSE, message = FALSE, out.width="50%", fig.cap = "Residuals vs. Fitted Values", fig.show = 'hold'}
+plot(aic, which=1)
+plot(aic, which=5)
+
+final <- trains[-c(118, 119),]
+model1 <- lm(log_response ~ City*Year*Uber + Population + Population.Density + Unemployment.Rate + Uber*Gas.Price + Vehicles + Route.Miles + Uber*Average.Fare + Minimum.Temperature + Precipitation + Snowfall + Snow.Depth + City*Season + Labor_perc, data = final)
+null_model <- lm(log_response ~ Uber, data = final)
+final_model <- lm(log_response ~ Uber + City + Gas.Price + Year + 
+    Season + Average.Fare + Labor_perc + Minimum.Temperature + 
+    Route.Miles + Population + Vehicles + Precipitation + Uber:City + 
+    City:Year + City:Season + Uber:Year + Uber:Average.Fare + 
+    Uber:Gas.Price + Uber:City:Year, data = final)
+
+```
+After removing these points, there were some other high leverage points, but none with high Cook's distance. Next, the assumptions for linearity were checked by plotting the residuals vs. each individual continuous predictor. There was no visible trend in these diagnostic plots, so this model was selected as the final model. All diagnostic plots for this model are included in Appendix 1. The last model assessment undertaken was checking for multicollinearity. There were several terms with very high VIF and GVIF values, which is expected given the number of interaction terms. Despite this, the model was not changed, because several of the terms with high VIF were critical to the inferential questions of this analysis.
+
+### Model Interpretation
+
+Due to space constraints, the output of the final model is included in Appendix 2. To interpret the effect of certain variables, namely City, Uber, Year, and Season, visualizations are required, due to the intricate nature of the interactions included in the final model. Figure 4 demonstrates the estimated percent change in ridership year over year by city, before and after the introduction of ridesharing service—under the assumption that all other variables in the model are held constant (i.e. population, weather, season, etc.). This figure shows that every city experienced a decrease in the year over year trend in ridership after Uber was introduced, and all cities except New York and San Francisco experienced a reversal of trends. Washington D.C. and Los Angeles are the most affected, while Chicago and San Francisco are the least affected.
+
+```{r, echo = FALSE, message = FALSE, out.width = "80%", fig.cap = "Projected Year over Year Change in Ridership Before and After Introduction of Ridersharing Services", warning = FALSE, fig.align = "center"}
+newyear <- rep(-8:9, each = 9)
+cities <- rep(c("Atlanta", "Boston", "Chicago","Los Angeles", "New York City", 'Philadelphia', "Portland", "San Francisco", "Washington, D.C."),18)
+newdata <- data.frame(matrix(0, nrow=length(newyear), ncol = 12))
+names(newdata) <- c("Uber","City", "Year", "Season", "Average.Fare", 
+                    "Labor_perc", "Population", "Minimum.Temperature", "Gas.Price", 
+                    "Route.Miles", "Vehicles", "Precipitation")
+newdata$Year <- newyear; newdata$Season = "Summer"; newdata$Uber <- 0; newdata$Snowfall <- 0; newdata$City <- cities
+
+newdata[newdata$City == 'Atlanta',"Average.Fare"] <- mean(final[final$City == 'Atlanta', 'Average.Fare'])
+newdata[newdata$City == 'Boston',"Average.Fare"] <- mean(final[final$City == 'Boston', 'Average.Fare'])
+newdata[newdata$City == 'Chicago',"Average.Fare"] <- mean(final[final$City == 'Chicago', 'Average.Fare'])
+newdata[newdata$City == 'Los Angeles',"Average.Fare"] <- mean(final[final$City == 'Los Angeles', 'Average.Fare'])
+newdata[newdata$City == 'New York City',"Average.Fare"] <- mean(final[final$City == 'New York City', 'Average.Fare'])
+newdata[newdata$City == 'Philadelphia',"Average.Fare"] <- mean(final[final$City == 'Philadelphia', 'Average.Fare'])
+newdata[newdata$City == 'Portland',"Average.Fare"] <- mean(final[final$City == 'Portland', 'Average.Fare'])
+newdata[newdata$City == 'San Francisco',"Average.Fare"] <- mean(final[final$City == 'San Francisco', 'Average.Fare'])
+newdata[newdata$City == 'Washington, D.C.',"Average.Fare"] <- mean(final[final$City == 'Washington, D.C.', 'Average.Fare'])
+
+newdata[newdata$City == 'Atlanta',"Labor_perc"] <- mean(final[final$City == 'Atlanta', 'Labor_perc'])
+newdata[newdata$City == 'Boston',"Labor_perc"] <- mean(final[final$City == 'Boston', 'Labor_perc'])
+newdata[newdata$City == 'Chicago',"Labor_perc"] <- mean(final[final$City == 'Chicago', 'Labor_perc'])
+newdata[newdata$City == 'Los Angeles',"Labor_perc"] <- mean(final[final$City == 'Los Angeles', 'Labor_perc'])
+newdata[newdata$City == 'New York City',"Labor_perc"] <- mean(final[final$City == 'New York City', 'Labor_perc'])
+newdata[newdata$City == 'Philadelphia',"Labor_perc"] <- mean(final[final$City == 'Philadelphia', 'Labor_perc'])
+newdata[newdata$City == 'Portland',"Labor_perc"] <- mean(final[final$City == 'Portland', 'Labor_perc'])
+newdata[newdata$City == 'San Francisco',"Labor_perc"] <- mean(final[final$City == 'San Francisco', 'Labor_perc'])
+newdata[newdata$City == 'Washington, D.C.',"Labor_perc"] <- mean(final[final$City == 'Washington, D.C.', 'Labor_perc'])
+
+newdata[newdata$City == 'Atlanta',"Population"] <- mean(final[final$City == 'Atlanta', 'Population'])
+newdata[newdata$City == 'Boston',"Population"] <- mean(final[final$City == 'Boston', 'Population'])
+newdata[newdata$City == 'Chicago',"Population"] <- mean(final[final$City == 'Chicago', 'Population'])
+newdata[newdata$City == 'Los Angeles',"Population"] <- mean(final[final$City == 'Los Angeles', 'Population'])
+newdata[newdata$City == 'New York City',"Population"] <- mean(final[final$City == 'New York City', 'Population'])
+newdata[newdata$City == 'Philadelphia',"Population"] <- mean(final[final$City == 'Philadelphia', 'Population'])
+newdata[newdata$City == 'Portland',"Population"] <- mean(final[final$City == 'Portland', 'Population'])
+newdata[newdata$City == 'San Francisco',"Population"] <- mean(final[final$City == 'San Francisco', 'Population'])
+newdata[newdata$City == 'Washington, D.C.',"Population"] <- mean(final[final$City == 'Washington, D.C.', 'Population'])
+
+newdata[newdata$City == 'Atlanta',"Minimum.Temperature"] <- mean(final[final$City == 'Atlanta', 'Minimum.Temperature'])
+newdata[newdata$City == 'Boston',"Minimum.Temperature"] <- mean(final[final$City == 'Boston', 'Minimum.Temperature'])
+newdata[newdata$City == 'Chicago',"Minimum.Temperature"] <- mean(final[final$City == 'Chicago', 'Minimum.Temperature'])
+newdata[newdata$City == 'Los Angeles',"Minimum.Temperature"] <- mean(final[final$City == 'Los Angeles', 'Minimum.Temperature'])
+newdata[newdata$City == 'New York City',"Minimum.Temperature"] <- mean(final[final$City == 'New York City', 'Minimum.Temperature'])
+newdata[newdata$City == 'Philadelphia',"Minimum.Temperature"] <- mean(final[final$City == 'Philadelphia', 'Minimum.Temperature'])
+newdata[newdata$City == 'Portland',"Minimum.Temperature"] <- mean(final[final$City == 'Portland', 'Minimum.Temperature'])
+newdata[newdata$City == 'San Francisco',"Minimum.Temperature"] <- mean(final[final$City == 'San Francisco', 'Minimum.Temperature'])
+newdata[newdata$City == 'Washington, D.C.',"Minimum.Temperature"] <- mean(final[final$City == 'Washington, D.C.', 'Minimum.Temperature'])
+
+newdata[newdata$City == 'Atlanta',"Gas.Price"] <- mean(final[final$City == 'Atlanta', 'Gas.Price'])
+newdata[newdata$City == 'Boston',"Gas.Price"] <- mean(final[final$City == 'Boston', 'Gas.Price'])
+newdata[newdata$City == 'Chicago',"Gas.Price"] <- mean(final[final$City == 'Chicago', 'Gas.Price'])
+newdata[newdata$City == 'Los Angeles',"Gas.Price"] <- mean(final[final$City == 'Los Angeles', 'Gas.Price'])
+newdata[newdata$City == 'New York City',"Gas.Price"] <- mean(final[final$City == 'New York City', 'Gas.Price'])
+newdata[newdata$City == 'Philadelphia',"Gas.Price"] <- mean(final[final$City == 'Philadelphia', 'Gas.Price'])
+newdata[newdata$City == 'Portland',"Gas.Price"] <- mean(final[final$City == 'Portland', 'Gas.Price'])
+newdata[newdata$City == 'San Francisco',"Gas.Price"] <- mean(final[final$City == 'San Francisco', 'Gas.Price'])
+newdata[newdata$City == 'Washington, D.C.',"Gas.Price"] <- mean(final[final$City == 'Washington, D.C.', 'Gas.Price'])
+
+newdata[newdata$City == 'Atlanta',"Vehicles"] <- mean(final[final$City == 'Atlanta', 'Vehicles'])
+newdata[newdata$City == 'Boston',"Vehicles"] <- mean(final[final$City == 'Boston', 'Vehicles'])
+newdata[newdata$City == 'Chicago',"Vehicles"] <- mean(final[final$City == 'Chicago', 'Vehicles'])
+newdata[newdata$City == 'Los Angeles',"Vehicles"] <- mean(final[final$City == 'Los Angeles', 'Vehicles'])
+newdata[newdata$City == 'New York City',"Vehicles"] <- mean(final[final$City == 'New York City', 'Vehicles'])
+newdata[newdata$City == 'Philadelphia',"Vehicles"] <- mean(final[final$City == 'Philadelphia', 'Vehicles'])
+newdata[newdata$City == 'Portland',"Vehicles"] <- mean(final[final$City == 'Portland', 'Vehicles'])
+newdata[newdata$City == 'San Francisco',"Vehicles"] <- mean(final[final$City == 'San Francisco', 'Vehicles'])
+newdata[newdata$City == 'Washington, D.C.',"Vehicles"] <- mean(final[final$City == 'Washington, D.C.', 'Vehicles'])
+
+newdata[newdata$City == 'Atlanta',"Route.Miles"] <- mean(final[final$City == 'Atlanta', 'Route.Miles'])
+newdata[newdata$City == 'Boston',"Route.Miles"] <- mean(final[final$City == 'Boston', 'Route.Miles'])
+newdata[newdata$City == 'Chicago',"Route.Miles"] <- mean(final[final$City == 'Chicago', 'Route.Miles'])
+newdata[newdata$City == 'Los Angeles',"Route.Miles"] <- mean(final[final$City == 'Los Angeles', 'Route.Miles'])
+newdata[newdata$City == 'New York City',"Route.Miles"] <- mean(final[final$City == 'New York City', 'Route.Miles'])
+newdata[newdata$City == 'Philadelphia',"Route.Miles"] <- mean(final[final$City == 'Philadelphia', 'Route.Miles'])
+newdata[newdata$City == 'Portland',"Route.Miles"] <- mean(final[final$City == 'Portland', 'Route.Miles'])
+newdata[newdata$City == 'San Francisco',"Route.Miles"] <- mean(final[final$City == 'San Francisco', 'Route.Miles'])
+newdata[newdata$City == 'Washington, D.C.',"Route.Miles"] <- mean(final[final$City == 'Washington, D.C.', 'Route.Miles'])
+
+newdata$Precipitation <- 0
+newdata[newdata$City == "New York City" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "Chicago" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "Washington, D.C." & newdata$Year > 1,'Uber'] <- 1
+newdata[newdata$City == "Portland" & newdata$Year > 1,'Uber'] <- 1
+newdata[newdata$City == "Atlanta" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "Boston" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "Los Angeles" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "Philadelphia" & newdata$Year > 0,'Uber'] <- 1
+newdata[newdata$City == "San Francisco" & newdata$Year > 0,'Uber'] <- 1
+
+newdata$Uber <- factor(newdata$Uber)
+
+preds_no_train <- predict(final_model, newdata, type = "response", se.fit = TRUE)
+
+fit <- exp(preds_no_train$fit)
+newdata$Year <- newdata$Year + 2010
+
+newdata$Average.Daily.Ridership <- fit
+newdata <- newdata %>% arrange(City, Year)
+test <-change(newdata, "Average.Daily.Ridership", "City", "Year", "pct_change", 
+              slideBy = -1, type = "percent")
+test <- test[test$Year == 2003 | test$Year == 2015,]
+test$Ridesharing <- "Not Available"
+test[test$Year == 2015,"Ridesharing"] <- "Available"
+test[test$City == 'Atlanta',"City"] <- "Atlanta"
+test[test$City == 'Boston',"City"] <- "Boston"
+test[test$City == 'Chicago',"City"] <- "Chicago"
+test[test$City == 'Los Angeles',"City"] <- "L.A."
+test[test$City == 'New York City',"City"] <- "N.Y.C."
+test[test$City == 'Philadelphia',"City"] <- "Philly"
+test[test$City == 'Portland',"City"] <- "Portland"
+test[test$City == 'San Francisco',"City"] <- "SF"
+test[test$City == 'Washington, D.C.',"City"] <- "D.C."
+
+ggplot(test, aes(fill = forcats::fct_rev(Ridesharing), y = pct_change, 
+                 x = City)) +  geom_bar(position="dodge", stat="identity", width = 0.8) +
+  theme_bw() + guides(fill=guide_legend(title="Ridesharing")) + 
+  labs(y = "Percent Change in Year over Year Ridership", title = 
+         "Ridership Change by Year by Ridesharing Status") + theme(plot.title = element_text(hjust = 0.5))
+```
+Figure 5 displays how ridership changes by season and by city, again controlling for all other factors. This graph contains some very interesting trends. Overall, spring and fall appear to be high ridership months, while winter is generally a lower ridership month, and summer is closer to average. Notably, there are some deviations from this trend: Philadelphia and New York have decreased ridership in the summer. In fact, Philadelphia's summers show the greatest deviation from average than any other city's seasons. Los Angeles shows very little differences between seasons, which makes sense given the consistent climate.
+
+
+```{r, echo = FALSE, message = FALSE, out.width = "80%", fig.cap = "Percent Above Average Ridership by City by Season", warning = FALSE, fig.align = "center"}
+cities2 <- rep(c("Atlanta", "Boston", "Chicago","Los Angeles", "New York City", 'Philadelphia', "Portland", "San Francisco", "Washington, D.C."),4)
+newdata <- data.frame(matrix(0, nrow=36, ncol = 12))
+names(newdata) <- c("Uber","City", "Year", "Season", "Average.Fare", 
+                    "Labor_perc", "Population", "Minimum.Temperature", "Gas.Price", 
+                    "Route.Miles", "Vehicles", "Precipitation")
+newdata$Year <- 0; newdata$Season = rep(c("Winter", "Spring", "Summer", "Fall"), each = 9); newdata$Uber <- 0; newdata$City <- cities2; newdata$Precipitation <- 0
+
+newdata[newdata$City == 'Atlanta',"Average.Fare"] <- mean(final[final$City == 'Atlanta', 'Average.Fare'])
+newdata[newdata$City == 'Boston',"Average.Fare"] <- mean(final[final$City == 'Boston', 'Average.Fare'])
+newdata[newdata$City == 'Chicago',"Average.Fare"] <- mean(final[final$City == 'Chicago', 'Average.Fare'])
+newdata[newdata$City == 'Los Angeles',"Average.Fare"] <- mean(final[final$City == 'Los Angeles', 'Average.Fare'])
+newdata[newdata$City == 'New York City',"Average.Fare"] <- mean(final[final$City == 'New York City', 'Average.Fare'])
+newdata[newdata$City == 'Philadelphia',"Average.Fare"] <- mean(final[final$City == 'Philadelphia', 'Average.Fare'])
+newdata[newdata$City == 'Portland',"Average.Fare"] <- mean(final[final$City == 'Portland', 'Average.Fare'])
+newdata[newdata$City == 'San Francisco',"Average.Fare"] <- mean(final[final$City == 'San Francisco', 'Average.Fare'])
+newdata[newdata$City == 'Washington, D.C.',"Average.Fare"] <- mean(final[final$City == 'Washington, D.C.', 'Average.Fare'])
+
+newdata[newdata$City == 'Atlanta',"Labor_perc"] <- mean(final[final$City == 'Atlanta', 'Labor_perc'])
+newdata[newdata$City == 'Boston',"Labor_perc"] <- mean(final[final$City == 'Boston', 'Labor_perc'])
+newdata[newdata$City == 'Chicago',"Labor_perc"] <- mean(final[final$City == 'Chicago', 'Labor_perc'])
+newdata[newdata$City == 'Los Angeles',"Labor_perc"] <- mean(final[final$City == 'Los Angeles', 'Labor_perc'])
+newdata[newdata$City == 'New York City',"Labor_perc"] <- mean(final[final$City == 'New York City', 'Labor_perc'])
+newdata[newdata$City == 'Philadelphia',"Labor_perc"] <- mean(final[final$City == 'Philadelphia', 'Labor_perc'])
+newdata[newdata$City == 'Portland',"Labor_perc"] <- mean(final[final$City == 'Portland', 'Labor_perc'])
+newdata[newdata$City == 'San Francisco',"Labor_perc"] <- mean(final[final$City == 'San Francisco', 'Labor_perc'])
+newdata[newdata$City == 'Washington, D.C.',"Labor_perc"] <- mean(final[final$City == 'Washington, D.C.', 'Labor_perc'])
+
+newdata[newdata$City == 'Atlanta',"Population"] <- mean(final[final$City == 'Atlanta', 'Population'])
+newdata[newdata$City == 'Boston',"Population"] <- mean(final[final$City == 'Boston', 'Population'])
+newdata[newdata$City == 'Chicago',"Population"] <- mean(final[final$City == 'Chicago', 'Population'])
+newdata[newdata$City == 'Los Angeles',"Population"] <- mean(final[final$City == 'Los Angeles', 'Population'])
+newdata[newdata$City == 'New York City',"Population"] <- mean(final[final$City == 'New York City', 'Population'])
+newdata[newdata$City == 'Philadelphia',"Population"] <- mean(final[final$City == 'Philadelphia', 'Population'])
+newdata[newdata$City == 'Portland',"Population"] <- mean(final[final$City == 'Portland', 'Population'])
+newdata[newdata$City == 'San Francisco',"Population"] <- mean(final[final$City == 'San Francisco', 'Population'])
+newdata[newdata$City == 'Washington, D.C.',"Population"] <- mean(final[final$City == 'Washington, D.C.', 'Population'])
+
+newdata[newdata$City == 'Atlanta',"Minimum.Temperature"] <- mean(final[final$City == 'Atlanta', 'Minimum.Temperature'])
+newdata[newdata$City == 'Boston',"Minimum.Temperature"] <- mean(final[final$City == 'Boston', 'Minimum.Temperature'])
+newdata[newdata$City == 'Chicago',"Minimum.Temperature"] <- mean(final[final$City == 'Chicago', 'Minimum.Temperature'])
+newdata[newdata$City == 'Los Angeles',"Minimum.Temperature"] <- mean(final[final$City == 'Los Angeles', 'Minimum.Temperature'])
+newdata[newdata$City == 'New York City',"Minimum.Temperature"] <- mean(final[final$City == 'New York City', 'Minimum.Temperature'])
+newdata[newdata$City == 'Philadelphia',"Minimum.Temperature"] <- mean(final[final$City == 'Philadelphia', 'Minimum.Temperature'])
+newdata[newdata$City == 'Portland',"Minimum.Temperature"] <- mean(final[final$City == 'Portland', 'Minimum.Temperature'])
+newdata[newdata$City == 'San Francisco',"Minimum.Temperature"] <- mean(final[final$City == 'San Francisco', 'Minimum.Temperature'])
+newdata[newdata$City == 'Washington, D.C.',"Minimum.Temperature"] <- mean(final[final$City == 'Washington, D.C.', 'Minimum.Temperature'])
+
+newdata[newdata$City == 'Atlanta',"Gas.Price"] <- mean(final[final$City == 'Atlanta', 'Gas.Price'])
+newdata[newdata$City == 'Boston',"Gas.Price"] <- mean(final[final$City == 'Boston', 'Gas.Price'])
+newdata[newdata$City == 'Chicago',"Gas.Price"] <- mean(final[final$City == 'Chicago', 'Gas.Price'])
+newdata[newdata$City == 'Los Angeles',"Gas.Price"] <- mean(final[final$City == 'Los Angeles', 'Gas.Price'])
+newdata[newdata$City == 'New York City',"Gas.Price"] <- mean(final[final$City == 'New York City', 'Gas.Price'])
+newdata[newdata$City == 'Philadelphia',"Gas.Price"] <- mean(final[final$City == 'Philadelphia', 'Gas.Price'])
+newdata[newdata$City == 'Portland',"Gas.Price"] <- mean(final[final$City == 'Portland', 'Gas.Price'])
+newdata[newdata$City == 'San Francisco',"Gas.Price"] <- mean(final[final$City == 'San Francisco', 'Gas.Price'])
+newdata[newdata$City == 'Washington, D.C.',"Gas.Price"] <- mean(final[final$City == 'Washington, D.C.', 'Gas.Price'])
+
+newdata[newdata$City == 'Atlanta',"Vehicles"] <- mean(final[final$City == 'Atlanta', 'Vehicles'])
+newdata[newdata$City == 'Boston',"Vehicles"] <- mean(final[final$City == 'Boston', 'Vehicles'])
+newdata[newdata$City == 'Chicago',"Vehicles"] <- mean(final[final$City == 'Chicago', 'Vehicles'])
+newdata[newdata$City == 'Los Angeles',"Vehicles"] <- mean(final[final$City == 'Los Angeles', 'Vehicles'])
+newdata[newdata$City == 'New York City',"Vehicles"] <- mean(final[final$City == 'New York City', 'Vehicles'])
+newdata[newdata$City == 'Philadelphia',"Vehicles"] <- mean(final[final$City == 'Philadelphia', 'Vehicles'])
+newdata[newdata$City == 'Portland',"Vehicles"] <- mean(final[final$City == 'Portland', 'Vehicles'])
+newdata[newdata$City == 'San Francisco',"Vehicles"] <- mean(final[final$City == 'San Francisco', 'Vehicles'])
+newdata[newdata$City == 'Washington, D.C.',"Vehicles"] <- mean(final[final$City == 'Washington, D.C.', 'Vehicles'])
+
+newdata[newdata$City == 'Atlanta',"Route.Miles"] <- mean(final[final$City == 'Atlanta', 'Route.Miles'])
+newdata[newdata$City == 'Boston',"Route.Miles"] <- mean(final[final$City == 'Boston', 'Route.Miles'])
+newdata[newdata$City == 'Chicago',"Route.Miles"] <- mean(final[final$City == 'Chicago', 'Route.Miles'])
+newdata[newdata$City == 'Los Angeles',"Route.Miles"] <- mean(final[final$City == 'Los Angeles', 'Route.Miles'])
+newdata[newdata$City == 'New York City',"Route.Miles"] <- mean(final[final$City == 'New York City', 'Route.Miles'])
+newdata[newdata$City == 'Philadelphia',"Route.Miles"] <- mean(final[final$City == 'Philadelphia', 'Route.Miles'])
+newdata[newdata$City == 'Portland',"Route.Miles"] <- mean(final[final$City == 'Portland', 'Route.Miles'])
+newdata[newdata$City == 'San Francisco',"Route.Miles"] <- mean(final[final$City == 'San Francisco', 'Route.Miles'])
+newdata[newdata$City == 'Washington, D.C.',"Route.Miles"] <- mean(final[final$City == 'Washington, D.C.', 'Route.Miles'])
+
+newdata$Uber <- factor(newdata$Uber)
+preds_no_train <- predict(final_model, newdata, type = "response", se.fit = TRUE)
+newdata$Year <- newdata$Year + 2010
+fit <- exp(preds_no_train$fit)
+newdata$Average.Daily.Ridership <- fit
+
+newdata$pct <- 0
+newdata[newdata$City == 'Atlanta',"pct"] <- (newdata[newdata$City == 'Atlanta',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Atlanta', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Boston',"pct"] <- (newdata[newdata$City == 'Boston',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Boston', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Chicago',"pct"] <- (newdata[newdata$City == 'Chicago',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Chicago', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Los Angeles',"pct"] <- (newdata[newdata$City == 'Los Angeles',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Los Angeles', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'New York City',"pct"] <- (newdata[newdata$City == 'New York City',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'New York City', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Philadelphia',"pct"] <- (newdata[newdata$City == 'Philadelphia',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Philadelphia', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Portland',"pct"] <- (newdata[newdata$City == 'Portland',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Portland', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'San Francisco',"pct"] <- (newdata[newdata$City == 'San Francisco',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'San Francisco', 'Average.Daily.Ridership'])-1)*100
+newdata[newdata$City == 'Washington, D.C.',"pct"] <- (newdata[newdata$City == 'Washington, D.C.',"Average.Daily.Ridership"]/mean(newdata[newdata$City == 'Washington, D.C.', 'Average.Daily.Ridership'])-1)*100
+
+
+newdata[newdata$City == 'Atlanta',"City"] <- "Atlanta"
+newdata[newdata$City == 'Boston',"City"] <- "Boston"
+newdata[newdata$City == 'Chicago',"City"] <- "Chicago"
+newdata[newdata$City == 'Los Angeles',"City"] <- "L.A."
+newdata[newdata$City == 'New York City',"City"] <- "N.Y.C."
+newdata[newdata$City == 'Philadelphia',"City"] <- "Philly"
+newdata[newdata$City == 'Portland',"City"] <- "Portland"
+newdata[newdata$City == 'San Francisco',"City"] <- "SF"
+newdata[newdata$City == 'Washington, D.C.',"City"] <- "D.C."
+
+ggplot(newdata, aes(fill = Season, y = pct, 
+                 x = City)) +  geom_bar(position="dodge", stat="identity", width = 0.8) +
+  theme_bw() + guides(fill=guide_legend(title="Season")) + 
+  labs(y = "Percent Change Compared to Average Ridership", title = 
+         "Percent Change Compared to Average Ridership by Season ") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Continually, we can interpret the remaining coefficients that were significant at the 95% confidence level. The baseline of this model is the city of Atlanta in the year 2010, in the fall, before Uber was introduced, with all continuous predictors fixed at their mean. Thus the intercept of the model, 11.7, can be interpreted as the expected log of average ridership given these statistics, or 120,571, with a 95% confidence interval of (81,010, 179502). In the context of this interpretation, it is important to note that the continuous predictors are fixed at their overall mean, not the city-specific mean. There were several continuous predictors that were significant. For each of the following interpretations, the coefficients are exponentiated, and all other variables are assumed to be held constant. With these assumptions, the model indicates that a \$1 increase in the inflation adjusted gas price increases ridership by approximately 3.1%. However, after the introduction of Uber, the effect of gas prices flips, and a \$1 increase in the gas price decreases ridership by 1.6%. Similarly, an increase of 1% in labor force participation increases average daily ridership by 0.8%, while an increase of 10 degrees in the minimum average temperature increases average daily ridership by 0.7% (accounting for season). Considering city-specific factors, an increase in a transit system of 10 miles increases ridership by 1.3%, and an increase in the population of 100,000 actually decreases ridership by 2.6%. Average fair is another variable that has a separate value before and after the introduction of Uber in a given city. Before Uber is available, an increase of 10 cents in the average fare decreases ridership by 2.6%, while after Uber is available the same increase increases ridership by 1.3%.
+
+## Conclusion
+
+The final model utilized in this analysis answers the original questions of interest well. This model suggests that there is a significant difference in public transportation utilization before and after ridesharing services are introduced, after accounting for potential other explanatory factors. Every city in this analysis experienced a decrease in trend, with all but 2 cities seeing a significant reversal of trend. In the same vein, the introduction of ridesharing services also appears to have affected how gas prices and average fare are related to transit ridership. In addition to Uber-specific findings, this analysis also shed light on how other factors influence public transportation, ranging from controllable factors such as the length of the public transportation system to latent factors (i.e. weather).
+
+There are important limitations to consider in the context of interpretation, however. This analysis focuses only on rail ridership, and does not factor in bus ridership in these cities, which is often equal to or exceeding the number of unlinked passenger trips taken by rail. This is an important factor, because it's possible that rail losses could be accounted for by bus gains, especially with a shift towards bus-rapid transit (BRT) in the United States. Furthermore, another weakness of this analysis is the method by which ridesharing services are represented. Simply measuring whether Uber is available in a city is somewhat naive, given that many potential other factors could impact public transportation ridership: the number of Uber drives, the number of Uber trips, the cost of an Uber, and the availability of other ride-sharing services (including Lyft). However, most of this data is not available to the public. Finally, it is also important to recognize that there are definitely other factors that this analysis does not account for, including crime/safety, change in telecommuting prevelance, and more complicated population dynamics (such as population density near train stations). There is room for improvement in future work, including investigating bus ridership, including better population measures, and accounting for competition in the ridesharing market.
+
+\newpage
+
+## Appendix 1: Final Model Diagnostics
+```{r, echo = FALSE, message = FALSE, out.width = "40%", results = "asis"}
+plot(final_model, which = c(1,2))
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+plot(final_model, which = c(3,5))
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+ggplot(final, aes(x = Gas.Price, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Gas Price", y = "Residuals", title = "Gas Price vs. Model Residuals") + theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+ggplot(final, aes(x = Year, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Year", y = "Residuals", title = "Year vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+ggplot(final, aes(x = Average.Fare, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Average Fare", y = "Residuals", title = "Average Fare vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+ggplot(final, aes(x = Labor_perc, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red")  + labs(x = "Labor Force Participation", y = "Residuals", title = "Labor Force Participation vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+ggplot(final, aes(x = Population, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Population", y = "Residuals", title = "Population vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+ggplot(final, aes(x = Minimum.Temperature, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red")  + labs(x = "Minimum Temperature", y = "Residuals", title = "Minimum Temperature vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+ggplot(final, aes(x = Route.Miles, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red")  + labs(x = "Route Miles", y = "Residuals", title = "Route Miles vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+ggplot(final, aes(x = Vehicles, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Vehicles", y = "Residuals", title = "Vehicles vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+cat("\\ ")
+cat("\\linebreak")
+cat("\\ ")
+ggplot(final, aes(x = Precipitation, y = final_model$residuals)) + geom_point() + geom_hline(yintercept  = 0,color = "red") + labs(x = "Precipitation", y = "Residuals", title = "Precipitation vs. Model Residuals")+ theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
+
+```
+
+
+
+\newpage
+
+## Appendix 2: Final Model Output
+
+```{r, results = "asis", echo = FALSE, message = FALSE, floating = FALSE}
+xtb = xtable(summary(final_model), float.pos = 'h', center = TRUE, label = "tab:1", caption = "Final Regression Model")
+print(xtb, comment = FALSE, size="\\fontsize{7pt}{7pt}\\selectfont")
+```
+
+
+
+
