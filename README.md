@@ -14,3 +14,5 @@ Full findings and detailed methodology are available in the PDF report, located 
 ![plot](https://github.com/razalamb1/transit-modeling/blob/main/40_output/Screen%20Shot%202022-01-04%20at%205.36.26%20PM.png)
 
 ### Directions to Recreate Data
+
+The results from this analysis are easily verifiable. All source data (either scraped or downloaded) is available in the `00_source` folder, and the Python code used to clean and merge the data is available in the `10_code` folder. The exploratory analysis and modeling was done in R, and the requisite code can be found in the `30_analysis` folder.
