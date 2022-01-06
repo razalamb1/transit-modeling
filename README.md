@@ -9,7 +9,7 @@ Public transportation is one of the most important aspects of modern infrastruct
 
 ### Major Findings
 
-Full findings and detailed methodology are available in the PDF report, located in the `40_output` folder of the repository. Utlimately, a linear regression was utilized in this analysis, after a hierarchical linear model failed to converge. However, the linear model showed that all cities experienced a change in their trend of ridership over time **after** Uber was introduced in that respective city. In fact, all cities except San Francisco experienced a reversal of trend (i.e. a positive trend over time before Uber is introduced and a negative trend afterwards). See this effect below.
+Full findings and detailed methodology are available in the (PDF report)[https://github.com/razalamb1/transit-modeling/blob/main/40_output/final_report.pdf], located in the `40_output` folder of the repository. Utlimately, a linear regression was utilized in this analysis, after a hierarchical linear model failed to converge. However, the linear model showed that all cities experienced a change in their trend of ridership over time **after** Uber was introduced in that respective city. In fact, all cities except San Francisco experienced a reversal of trend (i.e. a positive trend over time before Uber is introduced and a negative trend afterwards). See this effect below.
 
 ![plot](https://github.com/razalamb1/transit-modeling/blob/main/40_output/Screen%20Shot%202022-01-04%20at%205.36.26%20PM.png)
 
